@@ -53,7 +53,7 @@ if the product_qty_type is “unit,” and otherwise displays the word “bulk.�
 */
 SELECT product_id,  product_name  --output columns 
 
-, CASE WHEN product_qty_type = 'unit'  THEN 'unit'
+, CASE WHEN LOWER(product_qty_type) = 'unit'  THEN 'unit'
 --		WHEN product_qty_type = 'lbs' THEN 'bulk' -- preserve NULL 
 		ELSE 'bulk'  -- assign all other values bulk (intentional)
 		END AS prod_qty_type_condensed  -- create output column 
@@ -67,11 +67,11 @@ contains the word “pepper” (regardless of capitalization), and otherwise out
 SELECT product_id, product_name
 --, CAST(pepper_flag AS INT) -- couldn't figure this out; come back to later 
 
-, CASE WHEN product_qty_type = 'unit'  THEN 'unit'
+, CASE WHEN LOWER(product_qty_type) = 'unit'  THEN 'unit'
 		ELSE 'bulk'
 		END AS prod_qty_type_condensed 
 
-, CASE WHEN lower(product_name) LIKE '%pepper%'	THEN 1 -- contains pepper anywhere, case insensitive 
+, CASE WHEN LOWER(product_name) LIKE '%pepper%'	THEN 1 -- contains pepper anywhere, case insensitive 
 		ELSE 0
 		END AS pepper_flag
 
@@ -83,7 +83,9 @@ FROM product;
 /* 1. Write a query that INNER JOINs the vendor table to the vendor_booth_assignments table on the 
 vendor_id field they both have in common, and sorts the result by vendor_name, then market_date. */
 
--- SELECT DISTINCT vendor_id FROM vendor_booth_assignments;  -- check vendor_id 2, 5, 6 are absent from final table 
+/* check vendor_id 2, 5, 6 are absent from final table 
+SELECT DISTINCT vendor_id FROM vendor WHERE vendor_id NOT IN (SELECT DISTINCT vendor_id FROM vendor_booth_assignments)
+*/
 SELECT 
 v.*,  -- select all columns from vendor 
 vb.booth_number, vb.market_date  -- exclude vendor_id in output table
@@ -92,8 +94,8 @@ FROM vendor AS v 	-- table order doesn't matter with INNER JOIN, yay!
 INNER JOIN vendor_booth_assignments as vb
 		ON v.vendor_id = vb.vendor_id 
 
-ORDER BY vendor_name, market_date --no sort order specified, assumed default 
--- WHERE vb.vendor_id IN (2,5,6) -- check inner join 
+ORDER BY vendor_name, market_date; --no sort order specified, assumed default 
+-- WHERE vb.vendor_id IN (2,5,6); -- check inner join 
 
 
 /* SECTION 3 */
@@ -101,14 +103,35 @@ ORDER BY vendor_name, market_date --no sort order specified, assumed default
 -- AGGREGATE
 /* 1. Write a query that determines how many times each vendor has rented a booth 
 at the farmer’s market by counting the vendor booth assignments per vendor_id. */
+/* NOTES - vendors are not always assigned to the same booth  */
 
+-- SELECT COUNT(DISTINCT vendor_id) AS num_vendors FROM vendor_booth_assignments -- query result should have 6 rows 
+SELECT vendor_id, 
+COUNT(booth_number) AS times_rented -- also could have used COUNT(*)  
+
+FROM vendor_booth_assignments
+GROUP BY vendor_id; -- aggregate
 
 
 /* 2. The Farmer’s Market Customer Appreciation Committee wants to give a bumper 
 sticker to everyone who has ever spent more than $2000 at the market. Write a query that generates a list 
 of customers for them to give stickers to, sorted by last name, then first name. 
-
 HINT: This query requires you to join two tables, use an aggregate function, and use the HAVING keyword. */
+
+/* SELECT COUNT(DISTINCT customer_id) FROM customer_purchases; -- 26
+SELECT COUNT(DISTINCT customer_id) FROM customer;  -- 26
+SELECT DISTINCT customer_id FROM customer WHERE customer_id NOT IN (SELECT DISTINCT customer_id FROM customer_purchases)
+*/
+SELECT  c.customer_id, c.customer_first_name,  c.customer_last_name, -- c and cp (below) not needed since colnames are unique, here for explicitness 
+SUM(cp.quantity*cp.cost_to_customer_per_qty) AS total_cost  -- calculate total_cost then sum across unique customer_id rows (group by)
+
+FROM customer_purchases AS cp
+INNER JOIN customer AS c -- INNER JOIN so table order doesn't matter, yay! 
+		ON c.customer_id = cp.customer_id 
+GROUP BY cp.customer_id -- cp.customer_first_name, cp.customer_last_name not needed as cp.customer_id already uniquely identifies 
+
+HAVING total_cost > 2000 -- only customers spending > $2000 get a bumper sticker
+ORDER BY c.customer_last_name, c.customer_last_name; -- sort order not further specified, assume default  
 
 
 
@@ -124,7 +147,31 @@ When inserting the new vendor, you need to appropriately align the columns to be
 VALUES(col1,col2,col3,col4,col5) 
 */
 
+DROP TABLE IF EXISTS temp.new_vendor; -- if exists, drop it, otherwise do nothing 
+CREATE  TABLE temp.new_vendor AS SELECT * FROM vendor;  -- copy vendor table; note this changes table typing and schema
 
+INSERT INTO temp.new_vendor 
+		VALUES (10, 'Thomass Superfood Store',  'Fresh Focused', 'Thomas', 'Rosenthal'); -- add entry man  ually; note that INSERT INTO + VALUES is one clause 
+
+SELECT * FROM temp.new_vendor WHERE vendor_id = 10 -- confirm insertion worked as intended
+
+/* To preserve typing and schema, recreate table using CREATE TABLE for vendor
+CREATE TABLE temp.new_vendor (
+  "vendor_id" int(11) NOT NULL ,
+  "vendor_name" varchar(45) NOT NULL,
+  "vendor_type" varchar(45) NOT NULL,
+  "vendor_owner_first_name" varchar(45) NOT NULL,
+  "vendor_owner_last_name" varchar(45) NOT NULL,
+  PRIMARY KEY ("vendor_id"),
+  UNIQUE  ("vendor_id"),
+  UNIQUE  ("vendor_name")
+)
+
+INSERT INTO temp.new_vendor SELECT * FROM vendor
+INSERT INTO temp.new_vendor VALUES (10, 'Thomass Superfood Store',  'Fresh Focused', 'Thomas', 'Rosenthal'); -- add entry manually; note that INSERT INTO + VALUES is one clause 
+
+SELECT * FROM temp.new_vendor WHERE vendor_id = 10 -- confirm insertion worked as intended
+*/
 
 -- Date
 /*1. Get the customer_id, month, and year (in separate columns) of every purchase in the customer_purchases table.
