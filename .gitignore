@@ -2,3 +2,4 @@
 .vscode/
 *.db-journal
 .venv
+.obsidian/
